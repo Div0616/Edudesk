@@ -8,7 +8,7 @@ import {
 } from 'firebase/firestore'
 
 const firebaseConfig = {
-  apiKey: "AIzaSyCZs2qHWNL1C0_CYCeaLafHQLkshCBQxXY",
+  apiKey: import.meta.env.VITE_FIREBASE_API_KEY,
   authDomain: "edudesk-e8d0e.firebaseapp.com",
   projectId: "edudesk-e8d0e",
   storageBucket: "edudesk-e8d0e.firebasestorage.app",
