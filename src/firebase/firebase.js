@@ -7,16 +7,23 @@ import {
   persistentMultipleTabManager
 } from 'firebase/firestore'
 
+// const firebaseConfig = {
+//   apiKey: import.meta.env.VITE_FIREBASE_API_KEY,
+//   authDomain: "edudesk-e8d0e.firebaseapp.com",
+//   projectId: "edudesk-e8d0e",
+//   storageBucket: "edudesk-e8d0e.firebasestorage.app",
+//   messagingSenderId: "247254732144",
+//   appId: "1:247254732144:web:fba0e2a931c64d40ba13b5",
+//   measurementId: "G-KBHQQHF2G4"
+// }
 const firebaseConfig = {
-  apiKey: import.meta.env.VITE_FIREBASE_API_KEY,
-  authDomain: "edudesk-e8d0e.firebaseapp.com",
-  projectId: "edudesk-e8d0e",
-  storageBucket: "edudesk-e8d0e.firebasestorage.app",
-  messagingSenderId: "247254732144",
-  appId: "1:247254732144:web:fba0e2a931c64d40ba13b5",
-  measurementId: "G-KBHQQHF2G4"
+  apiKey:            import.meta.env.VITE_FIREBASE_API_KEY,
+  authDomain:        import.meta.env.VITE_FIREBASE_AUTH_DOMAIN,
+  projectId:         import.meta.env.VITE_FIREBASE_PROJECT_ID,
+  storageBucket:     import.meta.env.VITE_FIREBASE_STORAGE_BUCKET,
+  messagingSenderId: import.meta.env.VITE_FIREBASE_MESSAGING_SENDER_ID,
+  appId:             import.meta.env.VITE_FIREBASE_APP_ID,
 }
-
 const app = initializeApp(firebaseConfig)
 
 export const auth = getAuth(app)
