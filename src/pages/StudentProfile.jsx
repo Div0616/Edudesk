@@ -1,9 +1,9 @@
 // src/pages/StudentProfile.jsx
-import { useEffect, useState } from 'react'
+import { useEffect, useState, useCallback, useMemo } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
-import { doc, getDoc } from 'firebase/firestore'
+import { doc, getDoc, getDocFromCache } from 'firebase/firestore'
 import { db } from '../firebase/firebase'
-import { getMarksByStudent, getAttendanceByClass, getExamsByClass } from '../firebase/firestore'
+import { getMarksByStudent, getAttendanceByClass, getExamsByClass, cachedGetDoc } from '../firebase/firestore'
 import { Layout, PageHeader } from '../components/layout/Layout'
 import { Button, Card, Badge, Spinner } from '../components/ui/index'
 import { calculateGrade, getPercentage } from '../utils/gradeCalculator'
@@ -18,24 +18,26 @@ export default function StudentProfile() {
   const [attStats, setAttStats] = useState({ total: 0, present: 0, absent: 0, late: 0 })
   const [loading, setLoading] = useState(true)
 
-  useEffect(() => { load() }, [studentId])
-
-  const load = async () => {
+  const load = useCallback(async () => {
     setLoading(true)
     // Student
-    const sSnap = await getDoc(doc(db, 'students', studentId))
+    const sSnap = await cachedGetDoc(doc(db, 'students', studentId))
     if (!sSnap.exists()) { navigate('/classes'); return }
     const s = { id: sSnap.id, ...sSnap.data() }
     setStudent(s)
 
-    // Class
-    const cSnap = await getDoc(doc(db, 'classes', s.classId))
+    // Fetch class, marks, exams, and attendance ALL in parallel
+    const [cSnap, rawMarks, exams, att] = await Promise.all([
+      cachedGetDoc(doc(db, 'classes', s.classId)),
+      getMarksByStudent(studentId),
+      getExamsByClass(s.classId),
+      getAttendanceByClass(s.classId)
+    ])
+
     const c = cSnap.exists() ? { id: cSnap.id, ...cSnap.data() } : null
     setCls(c)
 
     // Marks with exam info
-    const rawMarks = await getMarksByStudent(studentId)
-    const exams = c ? await getExamsByClass(c.id) : []
     const examMap = {}
     exams.forEach(e => { examMap[e.id] = e })
     const enriched = rawMarks.map(m => ({ ...m, exam: examMap[m.examId] })).filter(m => m.exam)
@@ -43,30 +45,32 @@ export default function StudentProfile() {
     setMarks(enriched)
 
     // Attendance
-    if (c) {
-      const att = await getAttendanceByClass(c.id)
-      let total = 0, present = 0, absent = 0, late = 0
-      att.forEach(a => {
-        const status = (a.records || {})[studentId]
-        if (status) {
-          total++
-          if (status === 'Present') present++
-          else if (status === 'Absent') absent++
-          else if (status === 'Late') late++
-        }
-      })
-      setAttStats({ total, present, absent, late })
-    }
+    let total = 0, present = 0, absent = 0, late = 0
+    att.forEach(a => {
+      const status = (a.records || {})[studentId]
+      if (status) {
+        total++
+        if (status === 'Present') present++
+        else if (status === 'Absent') absent++
+        else if (status === 'Late') late++
+      }
+    })
+    setAttStats({ total, present, absent, late })
 
     setLoading(false)
-  }
+  }, [studentId, navigate])
+
+  useEffect(() => { load() }, [load])
+
+  const avgPct = useMemo(() => marks.length > 0
+    ? (marks.reduce((a, m) => a + (m.marksObtained / m.exam.maxMarks) * 100, 0) / marks.length).toFixed(1)
+    : null, [marks])
+
+  const attPct = useMemo(() => attStats.total > 0
+    ? ((attStats.present / attStats.total) * 100).toFixed(1)
+    : null, [attStats])
 
   if (loading) return <Layout><div className="flex justify-center py-20"><Spinner size="lg" /></div></Layout>
-
-  const avgPct = marks.length > 0
-    ? (marks.reduce((a, m) => a + (m.marksObtained / m.exam.maxMarks) * 100, 0) / marks.length).toFixed(1)
-    : null
-  const attPct = attStats.total > 0 ? ((attStats.present / attStats.total) * 100).toFixed(1) : null
 
   return (
     <Layout>

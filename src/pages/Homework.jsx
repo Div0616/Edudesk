@@ -1,5 +1,5 @@
 // src/pages/Homework.jsx — optimistic updates + Bold & Bright UI
-import { useEffect, useState } from 'react'
+import { useEffect, useState, useCallback, useMemo } from 'react'
 import { useAuth } from '../context/AuthContext'
 import { getClasses, getHomeworkByClass, addHomework, updateHomework, deleteHomework, getSubjectsByClass } from '../firebase/firestore'
 import { Layout, PageHeader } from '../components/layout/Layout'
@@ -26,23 +26,27 @@ export default function Homework() {
   const [form, setForm] = useState({ title: '', subject: '', description: '', dueDate: format(new Date(), 'yyyy-MM-dd'), priority: 'Medium', status: 'Pending' })
   const [errors, setErrors] = useState({})
 
-  useEffect(() => { if (user) loadClasses() }, [user])
-  useEffect(() => { if (selectedClass) loadHomework() }, [selectedClass])
-
-  const loadClasses = async () => {
+  const loadClassesCb = useCallback(async () => {
+    if (!user) return
     const cls = await getClasses(user.uid)
     setClasses(cls)
     if (cls.length > 0) setSelectedClass(cls[0].id)
     setLoading(false)
-  }
+  }, [user])
 
-  const loadHomework = async () => {
+  const loadHomeworkCb = useCallback(async () => {
+    if (!selectedClass) return
     setLoading(true)
     const [hw, subs] = await Promise.all([getHomeworkByClass(selectedClass), getSubjectsByClass(selectedClass)])
     setHomework(hw)
     setSubjects(subs)
     setLoading(false)
-  }
+  }, [selectedClass])
+
+  useEffect(() => { loadClassesCb() }, [loadClassesCb])
+  useEffect(() => { loadHomeworkCb() }, [loadHomeworkCb])
+
+  // loadClasses and loadHomework are defined above as loadClassesCb and loadHomeworkCb
 
   const openAdd = () => {
     setEditData(null)
@@ -70,13 +74,13 @@ export default function Homework() {
   const handleSave = async () => {
     if (!validate()) return
     setSaving(true)
-    const hwData = { ...form, classId: selectedClass, teacherId: user.uid }
+    const hwData = { ...form, classId: selectedClass, teacherId: user?.uid }
     if (editData) {
       setHomework(prev => prev.map(h => h.id === editData.id ? { ...h, ...form } : h))
       setModal(false)
       toast.success('Homework updated!')
       try { await updateHomework(editData.id, hwData) }
-      catch { toast.error('Failed to update'); loadHomework() }
+      catch { toast.error('Failed to update'); loadHomeworkCb() }
     } else {
       const tempId = `temp_${Date.now()}`
       setHomework(prev => [{ id: tempId, ...hwData }, ...prev])
@@ -85,7 +89,7 @@ export default function Homework() {
       try {
         const ref = await addHomework(hwData)
         setHomework(prev => prev.map(h => h.id === tempId ? { ...h, id: ref.id } : h))
-      } catch { toast.error('Failed to assign'); loadHomework() }
+      } catch { toast.error('Failed to assign'); loadHomeworkCb() }
     }
     setSaving(false)
   }
@@ -97,7 +101,7 @@ export default function Homework() {
     setDeleteId(null)
     toast.success('Homework deleted')
     try { await deleteHomework(id) }
-    catch { toast.error('Failed to delete'); loadHomework() }
+    catch { toast.error('Failed to delete'); loadHomeworkCb() }
     setDeleting(false)
   }
 
@@ -108,34 +112,34 @@ export default function Homework() {
     catch { setHomework(prev => prev.map(h => h.id === hw.id ? { ...h, status: hw.status } : h)) }
   }
 
-  const getStatus = (hw) => {
+  const getStatus = useCallback((hw) => {
     if (hw.status === 'Done') return { label: 'Done', color: 'green' }
     if (isPast(parseISO(hw.dueDate)) && !isToday(parseISO(hw.dueDate))) return { label: 'Overdue', color: 'red' }
     if (isToday(parseISO(hw.dueDate))) return { label: 'Due Today', color: 'yellow' }
     return { label: 'Pending', color: 'blue' }
-  }
+  }, [])
 
-  const filtered = homework.filter(hw => {
+  const filtered = useMemo(() => homework.filter(hw => {
     const s = getStatus(hw)
     if (filter === 'all') return true
     if (filter === 'pending') return s.label === 'Pending' || s.label === 'Due Today'
     if (filter === 'overdue') return s.label === 'Overdue'
     if (filter === 'done') return s.label === 'Done'
     return true
-  })
+  }), [homework, filter, getStatus])
 
-  const counts = {
+  const counts = useMemo(() => ({
     all: homework.length,
     pending: homework.filter(h => { const s = getStatus(h); return s.label === 'Pending' || s.label === 'Due Today' }).length,
     overdue: homework.filter(h => getStatus(h).label === 'Overdue').length,
     done: homework.filter(h => getStatus(h).label === 'Done').length,
-  }
+  }), [homework, getStatus])
 
   const FILTER_STYLES = {
-    all:     { active: 'bg-surface-900 dark:bg-white text-white dark:text-surface-900', dot: '' },
+    all: { active: 'bg-surface-900 dark:bg-white text-white dark:text-surface-900', dot: '' },
     pending: { active: 'bg-blue-500 text-white', dot: 'bg-blue-400' },
-    overdue: { active: 'bg-red-500 text-white',  dot: 'bg-red-400' },
-    done:    { active: 'bg-emerald-500 text-white', dot: 'bg-emerald-400' },
+    overdue: { active: 'bg-red-500 text-white', dot: 'bg-red-400' },
+    done: { active: 'bg-emerald-500 text-white', dot: 'bg-emerald-400' },
   }
 
   return (
@@ -151,9 +155,8 @@ export default function Homework() {
           <div className="flex gap-1.5 flex-wrap">
             {Object.entries(counts).map(([k, v]) => (
               <button key={k} onClick={() => setFilter(k)}
-                className={`px-3 py-1.5 rounded-xl text-xs font-semibold transition-all capitalize flex items-center gap-1.5 ${
-                  filter === k ? FILTER_STYLES[k].active : 'bg-white dark:bg-surface-900 text-surface-500 border border-surface-200 dark:border-surface-700 hover:bg-surface-50'
-                }`}>
+                className={`px-3 py-1.5 rounded-xl text-xs font-semibold transition-all capitalize flex items-center gap-1.5 ${filter === k ? FILTER_STYLES[k].active : 'bg-white dark:bg-surface-900 text-surface-500 border border-surface-200 dark:border-surface-700 hover:bg-surface-50'
+                  }`}>
                 {k} <span className={`${filter === k ? 'bg-white/25' : 'bg-surface-200 dark:bg-surface-700'} text-xs rounded-full px-1.5 py-0.5 font-bold leading-none`}>{v}</span>
               </button>
             ))}
@@ -170,14 +173,12 @@ export default function Homework() {
             {filtered.map(hw => {
               const status = getStatus(hw)
               return (
-                <div key={hw.id} className={`bg-white dark:bg-surface-900 rounded-2xl border shadow-card px-5 py-4 flex flex-col sm:flex-row gap-4 transition-all ${
-                  hw.status === 'Done' ? 'opacity-55' : ''
-                } ${status.label === 'Overdue' ? 'border-red-200 dark:border-red-900/50' : 'border-surface-200 dark:border-surface-800'}`}>
+                <div key={hw.id} className={`bg-white dark:bg-surface-900 rounded-2xl border shadow-card px-5 py-4 flex flex-col sm:flex-row gap-4 transition-all ${hw.status === 'Done' ? 'opacity-55' : ''
+                  } ${status.label === 'Overdue' ? 'border-red-200 dark:border-red-900/50' : 'border-surface-200 dark:border-surface-800'}`}>
                   {/* Checkbox */}
                   <button onClick={() => toggleStatus(hw)}
-                    className={`mt-0.5 w-5 h-5 rounded-full border-2 flex-shrink-0 flex items-center justify-center transition-all ${
-                      hw.status === 'Done' ? 'bg-emerald-500 border-emerald-500' : 'border-surface-300 dark:border-surface-600 hover:border-primary-500'
-                    }`}>
+                    className={`mt-0.5 w-5 h-5 rounded-full border-2 flex-shrink-0 flex items-center justify-center transition-all ${hw.status === 'Done' ? 'bg-emerald-500 border-emerald-500' : 'border-surface-300 dark:border-surface-600 hover:border-primary-500'
+                      }`}>
                     {hw.status === 'Done' && <span className="text-white text-xs font-bold">✓</span>}
                   </button>
                   <div className="flex-1 min-w-0">

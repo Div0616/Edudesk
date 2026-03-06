@@ -1,5 +1,5 @@
 // src/pages/Classes.jsx — optimistic updates + Bold & Bright UI + student count badges
-import { useEffect, useState } from 'react'
+import { useEffect, useState, useCallback } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useAuth } from '../context/AuthContext'
 import { getClasses, addClass, updateClass, deleteClass, getStudentsByClass } from '../firebase/firestore'
@@ -7,8 +7,8 @@ import { Layout, PageHeader } from '../components/layout/Layout'
 import { Button, Input, Modal, ConfirmDialog, EmptyState, Badge, SkeletonCards } from '../components/ui/index'
 import toast from 'react-hot-toast'
 
-const CLASS_GRADS = ['class-grad-1','class-grad-2','class-grad-3','class-grad-4','class-grad-5','class-grad-6']
-const CLASS_EMOJIS = ['🏫','📐','🔬','📖','🎨','🧮','🌍','⚗️']
+const CLASS_GRADS = ['class-grad-1', 'class-grad-2', 'class-grad-3', 'class-grad-4', 'class-grad-5', 'class-grad-6']
+const CLASS_EMOJIS = ['🏫', '📐', '🔬', '📖', '🎨', '🧮', '🌍', '⚗️']
 
 export default function Classes() {
   const { user } = useAuth()
@@ -24,9 +24,8 @@ export default function Classes() {
   const [form, setForm] = useState({ className: '', section: '', subject: '' })
   const [errors, setErrors] = useState({})
 
-  useEffect(() => { if (user) load() }, [user])
-
-  const load = async () => {
+  const load = useCallback(async () => {
+    if (!user) return
     setLoading(true)
     const cls = await getClasses(user.uid)
     setClasses(cls)
@@ -38,32 +37,34 @@ export default function Classes() {
       counts[c.id] = students.length
     }))
     setStudentCounts(counts)
-  }
+  }, [user])
 
-  const openAdd = () => {
+  useEffect(() => { load() }, [load])
+
+  const openAdd = useCallback(() => {
     setEditData(null)
     setForm({ className: '', section: '', subject: '' })
     setErrors({})
     setModal(true)
-  }
+  }, [])
 
-  const openEdit = (cls, e) => {
+  const openEdit = useCallback((cls, e) => {
     e.stopPropagation()
     setEditData(cls)
     setForm({ className: cls.className, section: cls.section, subject: cls.subject || '' })
     setErrors({})
     setModal(true)
-  }
+  }, [])
 
-  const validate = () => {
+  const validate = useCallback(() => {
     const e = {}
     if (!form.className.trim()) e.className = 'Class name is required'
     if (!form.section.trim()) e.section = 'Section is required'
     setErrors(e)
     return !Object.keys(e).length
-  }
+  }, [form])
 
-  const handleSave = async () => {
+  const handleSave = useCallback(async () => {
     if (!validate()) return
     setSaving(true)
     if (editData) {
@@ -84,9 +85,9 @@ export default function Classes() {
       } catch { toast.error('Failed to create'); load() }
     }
     setSaving(false)
-  }
+  }, [validate, editData, form, user, load])
 
-  const handleDelete = async () => {
+  const handleDelete = useCallback(async () => {
     const id = deleteId
     setDeleting(true)
     setClasses(prev => prev.filter(c => c.id !== id))
@@ -95,7 +96,10 @@ export default function Classes() {
     try { await deleteClass(id, user.uid) }
     catch { toast.error('Failed to delete'); load() }
     setDeleting(false)
-  }
+  }, [deleteId, user, load])
+
+  const closeModal = useCallback(() => setModal(false), [])
+  const closeDelete = useCallback(() => setDeleteId(null), [])
 
   return (
     <Layout>
@@ -160,7 +164,7 @@ export default function Classes() {
           </div>
         )}
 
-        <Modal open={modal} onClose={() => setModal(false)} title={editData ? 'Edit Class' : 'New Class'}>
+        <Modal open={modal} onClose={closeModal} title={editData ? 'Edit Class' : 'New Class'}>
           <div className="space-y-4">
             <Input label="Class Name *" placeholder="e.g. Grade 10, Class 8A" value={form.className}
               onChange={e => setForm(f => ({ ...f, className: e.target.value }))} error={errors.className} />
@@ -169,13 +173,13 @@ export default function Classes() {
             <Input label="Main Subject (optional)" placeholder="e.g. Mathematics, Science" value={form.subject}
               onChange={e => setForm(f => ({ ...f, subject: e.target.value }))} />
             <div className="flex gap-3 pt-2">
-              <Button variant="secondary" className="flex-1" onClick={() => setModal(false)}>Cancel</Button>
+              <Button variant="secondary" className="flex-1" onClick={closeModal}>Cancel</Button>
               <Button className="flex-1" onClick={handleSave} loading={saving}>{editData ? 'Update Class' : 'Create Class'}</Button>
             </div>
           </div>
         </Modal>
 
-        <ConfirmDialog open={!!deleteId} onClose={() => setDeleteId(null)} onConfirm={handleDelete}
+        <ConfirmDialog open={!!deleteId} onClose={closeDelete} onConfirm={handleDelete}
           title="Delete Class" message="Delete this class? All student data will remain but the class will be removed." loading={deleting} />
       </div>
     </Layout>

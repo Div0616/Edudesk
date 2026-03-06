@@ -1,9 +1,9 @@
 // src/pages/Reports.jsx
-import { useEffect, useState } from 'react'
+import { useEffect, useState, useCallback, memo } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import { useAuth } from '../context/AuthContext'
-import { getClasses, getStudentsByClass, getMarksByStudent, getAttendanceByClass, getExamsByClass } from '../firebase/firestore'
-import { doc, getDoc } from 'firebase/firestore'
+import { getClasses, getStudentsByClass, getMarksByStudent, getAttendanceByClass, getExamsByClass, cachedGetDoc } from '../firebase/firestore'
+import { doc, getDoc, getDocFromCache } from 'firebase/firestore'
 import { db } from '../firebase/firebase'
 import { Layout, PageHeader } from '../components/layout/Layout'
 import { Button, Select, Card, Spinner, Badge } from '../components/ui/index'
@@ -26,41 +26,47 @@ export default function Reports() {
   const [previewData, setPreviewData] = useState(null)
   const [previewLoading, setPreviewLoading] = useState(false)
 
-  useEffect(() => { if (user) loadClasses() }, [user])
-  useEffect(() => { if (selectedClass) loadStudents() }, [selectedClass])
-  useEffect(() => { if (selectedStudent) loadPreview() }, [selectedStudent])
-
-  const loadClasses = async () => {
+  const loadClassesCb = useCallback(async () => {
+    if (!user) return
     const cls = await getClasses(user.uid)
     setClasses(cls)
     if (cls.length > 0 && !selectedClass) setSelectedClass(cls[0].id)
     setLoading(false)
-  }
+  }, [user, selectedClass])
 
-  const loadStudents = async () => {
+  const loadStudentsCb = useCallback(async () => {
+    if (!selectedClass) return
     const s = await getStudentsByClass(selectedClass)
     setStudents(s)
     if (s.length > 0 && !selectedStudent) setSelectedStudent(s[0].id)
     setSentCount(0)
-  }
+  }, [selectedClass, selectedStudent])
 
-  const loadPreview = async () => {
+  const loadPreviewCb = useCallback(async () => {
     if (!selectedStudent) return
     setPreviewLoading(true)
     try {
-      const sSnap = await getDoc(doc(db, 'students', selectedStudent))
+      const sSnap = await cachedGetDoc(doc(db, 'students', selectedStudent))
       if (!sSnap.exists()) return
       const student = { id: sSnap.id, ...sSnap.data() }
-      const cSnap = await getDoc(doc(db, 'classes', student.classId))
+
+      // Parallel: class + marks
+      const [cSnap, rawMarks] = await Promise.all([
+        cachedGetDoc(doc(db, 'classes', student.classId)),
+        getMarksByStudent(selectedStudent)
+      ])
       const cls = cSnap.exists() ? { id: cSnap.id, ...cSnap.data() } : null
 
-      const rawMarks = await getMarksByStudent(selectedStudent)
-      const exams = cls ? await getExamsByClass(cls.id) : []
+      // Parallel: exams + attendance
+      const [exams, att] = await Promise.all([
+        cls ? getExamsByClass(cls.id) : [],
+        cls ? getAttendanceByClass(cls.id) : []
+      ])
+
       const examMap = {}
       exams.forEach(e => { examMap[e.id] = e })
       const marks = rawMarks.map(m => ({ ...m, ...examMap[m.examId] })).filter(m => m.examName)
 
-      const att = cls ? await getAttendanceByClass(cls.id) : []
       const attRecords = []
       att.forEach(a => {
         const status = (a.records || {})[selectedStudent]
@@ -71,14 +77,20 @@ export default function Reports() {
     } finally {
       setPreviewLoading(false)
     }
-  }
+  }, [selectedStudent])
+
+  useEffect(() => { loadClassesCb() }, [loadClassesCb])
+  useEffect(() => { loadStudentsCb() }, [loadStudentsCb])
+  useEffect(() => { loadPreviewCb() }, [loadPreviewCb])
+
+  // loadClasses, loadStudents, and loadPreview are defined above as Cb variants
 
   const handleGenerateAndDownload = async (studentId) => {
     setGenerating(g => ({ ...g, [studentId]: true }))
     try {
-      const sSnap = await getDoc(doc(db, 'students', studentId))
+      const sSnap = await cachedGetDoc(doc(db, 'students', studentId))
       const student = { id: sSnap.id, ...sSnap.data() }
-      const cSnap = await getDoc(doc(db, 'classes', student.classId))
+      const cSnap = await cachedGetDoc(doc(db, 'classes', student.classId))
       const cls = { id: cSnap.id, ...cSnap.data() }
       const rawMarks = await getMarksByStudent(studentId)
       const exams = await getExamsByClass(cls.id)
@@ -102,7 +114,7 @@ export default function Reports() {
   }
 
   const handleSendWhatsApp = async (studentId) => {
-    const sSnap = await getDoc(doc(db, 'students', studentId))
+    const sSnap = await cachedGetDoc(doc(db, 'students', studentId))
     const student = { id: sSnap.id, ...sSnap.data() }
     openWhatsApp(student.parentWhatsApp, student.parentName, student.name, profile?.name || 'Teacher')
     setSentCount(c => c + 1)
@@ -212,7 +224,7 @@ export default function Reports() {
 }
 
 /* ── Report Preview Component ── */
-const ReportPreview = ({ data }) => {
+const ReportPreview = memo(({ data }) => {
   const { student, cls, marks, attRecords } = data
   const total = attRecords.length
   const present = attRecords.filter(r => r.status === 'Present').length
@@ -272,4 +284,4 @@ const ReportPreview = ({ data }) => {
       )}
     </div>
   )
-}
+})

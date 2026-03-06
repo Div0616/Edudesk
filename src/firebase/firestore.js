@@ -1,42 +1,71 @@
-// src/firebase/firestore.js — Optimized with parallel fetches + in-memory cache
+// src/firebase/firestore.js — Optimized: cache-first reads, setDoc merge writes
 
 import {
-  collection, doc, addDoc, updateDoc, deleteDoc,
-  getDocs, getDoc, query, where, orderBy, serverTimestamp,
+  collection, doc, addDoc, updateDoc, deleteDoc, setDoc,
+  getDocs, getDoc, getDocsFromCache, getDocFromCache,
+  query, where, orderBy, serverTimestamp,
   writeBatch, limit, startAfter
 } from 'firebase/firestore'
 import { db } from './firebase'
 import { cache } from '../utils/cache'
 
+const CACHE_TTL = 5 * 60_000 // 5 minutes
+
+/**
+ * Smart query: try IndexedDB cache first (instant), fall back to network.
+ * This leverages Firestore's built-in persistentLocalCache.
+ */
+async function smartGetDocs(q) {
+  try {
+    const cached = await getDocsFromCache(q)
+    if (!cached.empty) {
+      // Got data from cache — also refresh from network in background
+      getDocs(q).catch(() => { })
+      return cached
+    }
+  } catch { /* cache miss — fall through to network */ }
+  return await getDocs(q)
+}
+
+export async function cachedGetDoc(ref) {
+  try {
+    const cached = await getDocFromCache(ref)
+    if (cached.exists()) {
+      // Got data from cache — also refresh from network in background
+      getDoc(ref).catch(() => { })
+      return cached
+    }
+  } catch { /* cache miss — fall through to network */ }
+  return await getDoc(ref)
+}
+
 /* ─────────────────────────────────────────────
    TEACHER PROFILE
 ───────────────────────────────────────────── */
 export const getTeacherProfile = async (uid) => {
-  const cached = cache.get(`teacher:${uid}`)
-  if (cached) return cached
-  const snap = await getDoc(doc(db, 'teachers', uid))
+  const memCached = cache.get(`teacher:${uid}`)
+  if (memCached) return memCached
+  const snap = await cachedGetDoc(doc(db, 'teachers', uid))
   const result = snap.exists() ? { id: snap.id, ...snap.data() } : null
-  if (result) cache.set(`teacher:${uid}`, result)
+  if (result) cache.set(`teacher:${uid}`, result, CACHE_TTL)
   return result
 }
 
 export const saveTeacherProfile = async (uid, data) => {
   cache.invalidate(`teacher:${uid}`)
-  const ref = doc(db, 'teachers', uid)
-  await updateDoc(ref, { ...data, updatedAt: serverTimestamp() })
-    .catch(() => addDoc(collection(db, 'teachers'), { ...data, uid, createdAt: serverTimestamp() }))
+  await setDoc(doc(db, 'teachers', uid), { ...data, updatedAt: serverTimestamp() }, { merge: true })
 }
 
 /* ─────────────────────────────────────────────
    CLASSES
 ───────────────────────────────────────────── */
 export const getClasses = async (teacherId) => {
-  const cached = cache.get(`classes:${teacherId}`)
-  if (cached) return cached
+  const memCached = cache.get(`classes:${teacherId}`)
+  if (memCached) return memCached
   const q = query(collection(db, 'classes'), where('teacherId', '==', teacherId), orderBy('createdAt', 'desc'))
-  const snap = await getDocs(q)
+  const snap = await smartGetDocs(q)
   const result = snap.docs.map(d => ({ id: d.id, ...d.data() }))
-  cache.set(`classes:${teacherId}`, result, 30_000)
+  cache.set(`classes:${teacherId}`, result, CACHE_TTL)
   return result
 }
 
@@ -61,12 +90,12 @@ export const deleteClass = async (classId, teacherId) => {
    STUDENTS
 ───────────────────────────────────────────── */
 export const getStudentsByClass = async (classId) => {
-  const cached = cache.get(`students:${classId}`)
-  if (cached) return cached
+  const memCached = cache.get(`students:${classId}`)
+  if (memCached) return memCached
   const q = query(collection(db, 'students'), where('classId', '==', classId), orderBy('rollNumber'))
-  const snap = await getDocs(q)
+  const snap = await smartGetDocs(q)
   const result = snap.docs.map(d => ({ id: d.id, ...d.data() }))
-  cache.set(`students:${classId}`, result, 30_000)
+  cache.set(`students:${classId}`, result, CACHE_TTL)
   return result
 }
 
@@ -87,11 +116,11 @@ export const getStudentsPaginated = async (classId, pageSize = 20, lastDoc = nul
 }
 
 export const getStudent = async (studentId) => {
-  const cached = cache.get(`student:${studentId}`)
-  if (cached) return cached
-  const snap = await getDoc(doc(db, 'students', studentId))
+  const memCached = cache.get(`student:${studentId}`)
+  if (memCached) return memCached
+  const snap = await cachedGetDoc(doc(db, 'students', studentId))
   const result = snap.exists() ? { id: snap.id, ...snap.data() } : null
-  if (result) cache.set(`student:${studentId}`, result)
+  if (result) cache.set(`student:${studentId}`, result, CACHE_TTL)
   return result
 }
 
@@ -125,7 +154,6 @@ export const batchAddStudents = async (studentsArray) => {
     })
     await batch.commit()
   }
-  // Invalidate all student caches for this class
   if (studentsArray[0]?.classId) cache.invalidate(`students:${studentsArray[0].classId}`)
 }
 
@@ -133,12 +161,12 @@ export const batchAddStudents = async (studentsArray) => {
    SUBJECTS
 ───────────────────────────────────────────── */
 export const getSubjectsByClass = async (classId) => {
-  const cached = cache.get(`subjects:${classId}`)
-  if (cached) return cached
+  const memCached = cache.get(`subjects:${classId}`)
+  if (memCached) return memCached
   const q = query(collection(db, 'subjects'), where('classId', '==', classId), orderBy('name'))
-  const snap = await getDocs(q)
+  const snap = await smartGetDocs(q)
   const result = snap.docs.map(d => ({ id: d.id, ...d.data() }))
-  cache.set(`subjects:${classId}`, result)
+  cache.set(`subjects:${classId}`, result, CACHE_TTL)
   return result
 }
 
@@ -158,36 +186,33 @@ export const deleteSubject = async (subjectId, classId) => {
    ATTENDANCE
 ───────────────────────────────────────────── */
 export const getAttendanceByClass = async (classId) => {
-  const cached = cache.get(`att:${classId}`)
-  if (cached) return cached
+  const memCached = cache.get(`att:${classId}`)
+  if (memCached) return memCached
   const q = query(collection(db, 'attendance'), where('classId', '==', classId), orderBy('date', 'desc'))
-  const snap = await getDocs(q)
+  const snap = await smartGetDocs(q)
   const result = snap.docs.map(d => ({ id: d.id, ...d.data() }))
-  cache.set(`att:${classId}`, result, 20_000)
+  cache.set(`att:${classId}`, result, CACHE_TTL)
   return result
 }
 
 export const saveAttendance = async (classId, date, records) => {
   cache.invalidate(`att:${classId}`)
-  const q = query(collection(db, 'attendance'), where('classId', '==', classId), where('date', '==', date))
-  const snap = await getDocs(q)
-  if (!snap.empty) {
-    await updateDoc(doc(db, 'attendance', snap.docs[0].id), { records, updatedAt: serverTimestamp() })
-  } else {
-    await addDoc(collection(db, 'attendance'), { classId, date, records, createdAt: serverTimestamp() })
-  }
+  const docId = `${classId}_${date}`
+  await setDoc(doc(db, 'attendance', docId), {
+    classId, date, records, updatedAt: serverTimestamp()
+  }, { merge: true })
 }
 
 /* ─────────────────────────────────────────────
    EXAMS
 ───────────────────────────────────────────── */
 export const getExamsByClass = async (classId) => {
-  const cached = cache.get(`exams:${classId}`)
-  if (cached) return cached
+  const memCached = cache.get(`exams:${classId}`)
+  if (memCached) return memCached
   const q = query(collection(db, 'exams'), where('classId', '==', classId), orderBy('date', 'desc'))
-  const snap = await getDocs(q)
+  const snap = await smartGetDocs(q)
   const result = snap.docs.map(d => ({ id: d.id, ...d.data() }))
-  cache.set(`exams:${classId}`, result, 30_000)
+  cache.set(`exams:${classId}`, result, CACHE_TTL)
   return result
 }
 
@@ -210,62 +235,53 @@ export const deleteExam = async (examId, classId) => {
    MARKS
 ───────────────────────────────────────────── */
 export const getMarksByExam = async (examId) => {
-  const cached = cache.get(`marks:exam:${examId}`)
-  if (cached) return cached
+  const memCached = cache.get(`marks:exam:${examId}`)
+  if (memCached) return memCached
   const q = query(collection(db, 'marks'), where('examId', '==', examId))
-  const snap = await getDocs(q)
+  const snap = await smartGetDocs(q)
   const result = snap.docs.map(d => ({ id: d.id, ...d.data() }))
-  cache.set(`marks:exam:${examId}`, result, 20_000)
+  cache.set(`marks:exam:${examId}`, result, CACHE_TTL)
   return result
 }
 
 export const getMarksByStudent = async (studentId) => {
-  const cached = cache.get(`marks:student:${studentId}`)
-  if (cached) return cached
+  const memCached = cache.get(`marks:student:${studentId}`)
+  if (memCached) return memCached
   const q = query(collection(db, 'marks'), where('studentId', '==', studentId))
-  const snap = await getDocs(q)
+  const snap = await smartGetDocs(q)
   const result = snap.docs.map(d => ({ id: d.id, ...d.data() }))
-  cache.set(`marks:student:${studentId}`, result, 20_000)
+  cache.set(`marks:student:${studentId}`, result, CACHE_TTL)
   return result
 }
 
 export const saveMark = async (examId, studentId, data) => {
   cache.invalidate(`marks:exam:${examId}`)
   cache.invalidate(`marks:student:${studentId}`)
-  const q = query(collection(db, 'marks'), where('examId', '==', examId), where('studentId', '==', studentId))
-  const snap = await getDocs(q)
-  if (!snap.empty) {
-    await updateDoc(doc(db, 'marks', snap.docs[0].id), { ...data, updatedAt: serverTimestamp() })
-  } else {
-    await addDoc(collection(db, 'marks'), { examId, studentId, ...data, createdAt: serverTimestamp() })
-  }
+  const docId = `${examId}_${studentId}`
+  await setDoc(doc(db, 'marks', docId), {
+    examId, studentId, ...data, updatedAt: serverTimestamp()
+  }, { merge: true })
 }
 
 /* ─────────────────────────────────────────────
    TIMETABLE
 ───────────────────────────────────────────── */
 export const getTimetable = async (classId) => {
-  const cached = cache.get(`timetable:${classId}`)
-  if (cached) return cached
+  const memCached = cache.get(`timetable:${classId}`)
+  if (memCached) return memCached
   const q = query(collection(db, 'timetable'), where('classId', '==', classId))
-  const snap = await getDocs(q)
+  const snap = await smartGetDocs(q)
   const result = snap.docs.map(d => ({ id: d.id, ...d.data() }))
-  cache.set(`timetable:${classId}`, result)
+  cache.set(`timetable:${classId}`, result, CACHE_TTL)
   return result
 }
 
 export const saveTimetableSlot = async (classId, teacherId, day, period, data) => {
   cache.invalidate(`timetable:${classId}`)
-  const q = query(collection(db, 'timetable'),
-    where('classId', '==', classId),
-    where('day', '==', day),
-    where('period', '==', period))
-  const snap = await getDocs(q)
-  if (!snap.empty) {
-    await updateDoc(doc(db, 'timetable', snap.docs[0].id), { ...data, updatedAt: serverTimestamp() })
-  } else {
-    await addDoc(collection(db, 'timetable'), { classId, teacherId, day, period, ...data, createdAt: serverTimestamp() })
-  }
+  const docId = `${classId}_${day}_${period}`
+  await setDoc(doc(db, 'timetable', docId), {
+    classId, teacherId, day, period, ...data, updatedAt: serverTimestamp()
+  }, { merge: true })
 }
 
 export const deleteTimetableSlot = async (slotId, classId) => {
@@ -277,12 +293,12 @@ export const deleteTimetableSlot = async (slotId, classId) => {
    HOMEWORK
 ───────────────────────────────────────────── */
 export const getHomeworkByClass = async (classId) => {
-  const cached = cache.get(`hw:${classId}`)
-  if (cached) return cached
+  const memCached = cache.get(`hw:${classId}`)
+  if (memCached) return memCached
   const q = query(collection(db, 'homework'), where('classId', '==', classId), orderBy('dueDate', 'desc'))
-  const snap = await getDocs(q)
+  const snap = await smartGetDocs(q)
   const result = snap.docs.map(d => ({ id: d.id, ...d.data() }))
-  cache.set(`hw:${classId}`, result, 20_000)
+  cache.set(`hw:${classId}`, result, CACHE_TTL)
   return result
 }
 

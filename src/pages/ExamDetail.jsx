@@ -1,7 +1,7 @@
 // src/pages/ExamDetail.jsx
-import { useEffect, useState } from 'react'
+import { useEffect, useState, useCallback } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
-import { doc, getDoc } from 'firebase/firestore'
+import { doc, getDoc, getDocFromCache } from 'firebase/firestore'
 import { db } from '../firebase/firebase'
 import { getStudentsByClass, getMarksByExam, saveMark } from '../firebase/firestore'
 import { Layout, PageHeader } from '../components/layout/Layout'
@@ -19,33 +19,39 @@ export default function ExamDetail() {
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
 
-  useEffect(() => { load() }, [examId])
-
-  const load = async () => {
+  const load = useCallback(async () => {
     setLoading(true)
-    const snap = await getDoc(doc(db, 'exams', examId))
+    let snap
+    try { snap = await getDocFromCache(doc(db, 'exams', examId)) } catch { /* miss */ }
+    if (!snap || !snap.exists()) snap = await getDoc(doc(db, 'exams', examId))
     if (!snap.exists()) { navigate('/exams'); return }
     const examData = { id: snap.id, ...snap.data() }
     setExam(examData)
 
-    const s = await getStudentsByClass(examData.classId)
+    // Fetch students and marks in parallel
+    const [s, marks] = await Promise.all([
+      getStudentsByClass(examData.classId),
+      getMarksByExam(examId)
+    ])
     setStudents(s)
 
-    const marks = await getMarksByExam(examId)
     const map = {}
     marks.forEach(m => { map[m.studentId] = { marksObtained: m.marksObtained, remarks: m.remarks || '' } })
     setMarksMap(map)
     setLoading(false)
-  }
+  }, [examId, navigate])
 
-  const updateMark = (studentId, field, value) => {
+  useEffect(() => { load() }, [load])
+
+  const updateMark = useCallback((studentId, field, value) => {
     setMarksMap(prev => ({
       ...prev,
       [studentId]: { ...prev[studentId], [field]: value }
     }))
-  }
+  }, [])
 
-  const handleSaveAll = async () => {
+  const handleSaveAll = useCallback(async () => {
+    if (!exam) return
     setSaving(true)
     try {
       await Promise.all(
@@ -70,7 +76,7 @@ export default function ExamDetail() {
     } finally {
       setSaving(false)
     }
-  }
+  }, [exam, students, marksMap, examId])
 
   if (loading) return <Layout><div className="flex justify-center py-20"><Spinner size="lg" /></div></Layout>
 

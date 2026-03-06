@@ -1,18 +1,18 @@
 // src/components/layout/Layout.jsx — Bold & Bright, icon-only sidebar with hover expand + dark mode
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useCallback, memo } from 'react'
 import { NavLink, useNavigate } from 'react-router-dom'
 import { useAuth } from '../../context/AuthContext'
 import toast from 'react-hot-toast'
 
 const navItems = [
-  { to: '/dashboard', icon: '📊', label: 'Dashboard',  emoji: '📊' },
-  { to: '/classes',   icon: '🏫', label: 'Classes',    emoji: '🏫' },
-  { to: '/exams',     icon: '📝', label: 'Exams',      emoji: '📝' },
-  { to: '/homework',  icon: '📚', label: 'Homework',   emoji: '📚' },
-  { to: '/timetable', icon: '🗓️',  label: 'Timetable',  emoji: '🗓️'  },
-  { to: '/reports',   icon: '📄', label: 'Reports',    emoji: '📄' },
-  { to: '/analytics', icon: '📈', label: 'Analytics',  emoji: '📈' },
-  { to: '/profile',   icon: '👤', label: 'My Profile', emoji: '👤' },
+  { to: '/dashboard', icon: '📊', label: 'Dashboard', emoji: '📊' },
+  { to: '/classes', icon: '🏫', label: 'Classes', emoji: '🏫' },
+  { to: '/exams', icon: '📝', label: 'Exams', emoji: '📝' },
+  { to: '/homework', icon: '📚', label: 'Homework', emoji: '📚' },
+  { to: '/timetable', icon: '🗓️', label: 'Timetable', emoji: '🗓️' },
+  { to: '/reports', icon: '📄', label: 'Reports', emoji: '📄' },
+  { to: '/analytics', icon: '📈', label: 'Analytics', emoji: '📈' },
+  { to: '/profile', icon: '👤', label: 'My Profile', emoji: '👤' },
 ]
 
 /* ── Dark Mode Hook ── */
@@ -36,11 +36,17 @@ export const Layout = ({ children }) => {
   const [expanded, setExpanded] = useState(false)
   const [dark, setDark] = useDarkMode()
 
-  const handleLogout = async () => {
+  const handleLogout = useCallback(async () => {
     await logout()
     toast.success('Logged out successfully')
     navigate('/login')
-  }
+  }, [logout, navigate])
+
+  const closeMobile = useCallback(() => setMobileOpen(false), [])
+  const openMobile = useCallback(() => setMobileOpen(true), [])
+  const expandSidebar = useCallback(() => setExpanded(true), [])
+  const collapseSidebar = useCallback(() => setExpanded(false), [])
+  const toggleDark = useCallback(() => setDark(d => !d), [setDark])
 
   const initial = profile?.name?.charAt(0)?.toUpperCase() || 'T'
 
@@ -48,13 +54,13 @@ export const Layout = ({ children }) => {
     <div className="flex h-screen bg-surface-50 dark:bg-surface-950 overflow-hidden">
       {/* Mobile overlay */}
       {mobileOpen && (
-        <div className="fixed inset-0 bg-black/50 z-20 lg:hidden" onClick={() => setMobileOpen(false)} />
+        <div className="fixed inset-0 bg-black/50 z-20 lg:hidden" onClick={closeMobile} />
       )}
 
       {/* ── Sidebar ── */}
       <aside
-        onMouseEnter={() => setExpanded(true)}
-        onMouseLeave={() => setExpanded(false)}
+        onMouseEnter={expandSidebar}
+        onMouseLeave={collapseSidebar}
         className={`
           fixed lg:static inset-y-0 left-0 z-30
           flex flex-col
@@ -83,12 +89,11 @@ export const Layout = ({ children }) => {
             <NavLink
               key={item.to}
               to={item.to}
-              onClick={() => setMobileOpen(false)}
+              onClick={closeMobile}
               className={({ isActive }) =>
-                `flex items-center gap-3 px-2.5 py-2.5 rounded-xl text-sm font-semibold transition-all duration-200 overflow-hidden ${
-                  isActive
-                    ? 'bg-primary-500 text-white shadow-sm'
-                    : 'text-surface-500 dark:text-surface-400 hover:bg-surface-100 dark:hover:bg-surface-800 hover:text-surface-800 dark:hover:text-surface-200'
+                `flex items-center gap-3 px-2.5 py-2.5 rounded-xl text-sm font-semibold transition-all duration-200 overflow-hidden ${isActive
+                  ? 'bg-primary-500 text-white shadow-sm'
+                  : 'text-surface-500 dark:text-surface-400 hover:bg-surface-100 dark:hover:bg-surface-800 hover:text-surface-800 dark:hover:text-surface-200'
                 }`
               }
             >
@@ -104,7 +109,7 @@ export const Layout = ({ children }) => {
         <div className="px-3 py-4 border-t border-surface-100 dark:border-surface-800 space-y-2 overflow-hidden">
           {/* Dark toggle */}
           <button
-            onClick={() => setDark(d => !d)}
+            onClick={toggleDark}
             className="w-full flex items-center gap-3 px-2.5 py-2.5 rounded-xl text-sm font-semibold text-surface-500 dark:text-surface-400 hover:bg-surface-100 dark:hover:bg-surface-800 hover:text-surface-800 dark:hover:text-surface-200 transition-all duration-200 overflow-hidden"
           >
             <span className="text-xl flex-shrink-0 w-6 text-center">{dark ? '☀️' : '🌙'}</span>
@@ -141,7 +146,7 @@ export const Layout = ({ children }) => {
       <div className="flex-1 flex flex-col min-w-0 overflow-hidden">
         {/* Top bar (mobile) */}
         <header className="bg-white dark:bg-surface-900 border-b border-surface-100 dark:border-surface-800 px-5 py-3.5 flex items-center justify-between flex-shrink-0 shadow-sm lg:hidden">
-          <button onClick={() => setMobileOpen(true)} className="p-2 rounded-xl hover:bg-surface-100 dark:hover:bg-surface-800 text-surface-500 transition-colors">
+          <button onClick={openMobile} className="p-2 rounded-xl hover:bg-surface-100 dark:hover:bg-surface-800 text-surface-500 transition-colors">
             <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h16" />
             </svg>
@@ -152,7 +157,7 @@ export const Layout = ({ children }) => {
             </div>
             <span className="font-display font-black text-surface-900 dark:text-surface-50">EduDesk</span>
           </div>
-          <button onClick={() => setDark(d => !d)} className="p-2 rounded-xl hover:bg-surface-100 dark:hover:bg-surface-800 text-surface-500 transition-colors">
+          <button onClick={toggleDark} className="p-2 rounded-xl hover:bg-surface-100 dark:hover:bg-surface-800 text-surface-500 transition-colors">
             {dark ? '☀️' : '🌙'}
           </button>
         </header>
@@ -168,7 +173,7 @@ export const Layout = ({ children }) => {
 }
 
 /* ── Page Header ── */
-export const PageHeader = ({ title, subtitle, action, gradient }) => (
+export const PageHeader = memo(({ title, subtitle, action, gradient }) => (
   <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 mb-8">
     <div>
       <h1 className={`text-2xl font-display font-extrabold leading-tight ${gradient ? 'gradient-text' : 'text-surface-900 dark:text-surface-50'}`}>{title}</h1>
@@ -176,4 +181,4 @@ export const PageHeader = ({ title, subtitle, action, gradient }) => (
     </div>
     {action && <div className="flex-shrink-0">{action}</div>}
   </div>
-)
+))

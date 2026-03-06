@@ -1,5 +1,5 @@
 // src/pages/Analytics.jsx
-import { useEffect, useState } from 'react'
+import { useEffect, useState, useCallback, useMemo } from 'react'
 import { useAuth } from '../context/AuthContext'
 import { getClasses, getStudentsByClass, getAttendanceByClass, getExamsByClass, getMarksByStudent } from '../firebase/firestore'
 import { getDocs, collection, query, where } from 'firebase/firestore'
@@ -10,7 +10,7 @@ import {
   LineChart, Line, BarChart, Bar, XAxis, YAxis, CartesianGrid,
   Tooltip, ResponsiveContainer, Legend, AreaChart, Area
 } from 'recharts'
-import { format, parseISO, subDays, eachWeekOfInterval, startOfWeek, endOfWeek } from 'date-fns'
+import { format, parseISO, subDays, startOfWeek, endOfWeek } from 'date-fns'
 
 const LOW_ATTENDANCE_THRESHOLD = 75
 
@@ -27,18 +27,16 @@ export default function Analytics() {
   const [lowAttendance, setLowAttendance] = useState([])     // alerts
   const [subjectPerf, setSubjectPerf] = useState([])         // subject-wise bar chart
 
-  useEffect(() => { if (user) loadClasses() }, [user])
-  useEffect(() => { if (selectedClass) loadClassData() }, [selectedClass])
-  useEffect(() => { if (selectedStudent) loadStudentProgress() }, [selectedStudent])
-
-  const loadClasses = async () => {
+  const loadClasses = useCallback(async () => {
+    if (!user) return
     const cls = await getClasses(user.uid)
     setClasses(cls)
     if (cls.length > 0) setSelectedClass(cls[0].id)
     setLoading(false)
-  }
+  }, [user])
 
-  const loadClassData = async () => {
+  const loadClassData = useCallback(async () => {
+    if (!selectedClass) return
     setLoading(true)
     const [sts, att, exams] = await Promise.all([
       getStudentsByClass(selectedClass),
@@ -95,19 +93,20 @@ export default function Analytics() {
     alerts.sort((a, b) => a.pct - b.pct)
     setLowAttendance(alerts)
 
-    // ── Subject-wise performance ──
+    // ── Subject-wise performance — fetch ALL marks in parallel ──
+    const markSnapResults = await Promise.all(
+      exams.map(exam => getDocs(query(collection(db, 'marks'), where('examId', '==', exam.id))))
+    )
     const subjectMap = {}
-    for (const exam of exams) {
-      const mq = query(collection(db, 'marks'), where('examId', '==', exam.id))
-      const msnap = await getDocs(mq)
-      const marks = msnap.docs.map(d => d.data())
+    exams.forEach((exam, idx) => {
+      const marks = markSnapResults[idx].docs.map(d => d.data())
       if (marks.length > 0) {
         const avg = marks.reduce((a, m) => a + (m.marksObtained / exam.maxMarks) * 100, 0) / marks.length
         if (!subjectMap[exam.subject]) subjectMap[exam.subject] = { scores: [], count: 0 }
         subjectMap[exam.subject].scores.push(avg)
         subjectMap[exam.subject].count++
       }
-    }
+    })
     const subjectArr = Object.entries(subjectMap).map(([subject, data]) => ({
       subject: subject.length > 12 ? subject.substring(0, 12) + '…' : subject,
       avg: +(data.scores.reduce((a, b) => a + b, 0) / data.scores.length).toFixed(1)
@@ -115,9 +114,10 @@ export default function Analytics() {
     setSubjectPerf(subjectArr)
 
     setLoading(false)
-  }
+  }, [selectedClass])
 
-  const loadStudentProgress = async () => {
+  const loadStudentProgress = useCallback(async () => {
+    if (!selectedStudent || !selectedClass) return
     const exams = await getExamsByClass(selectedClass)
     const examMap = {}
     exams.forEach(e => { examMap[e.id] = e })
@@ -134,9 +134,16 @@ export default function Analytics() {
         subject: m.exam.subject
       }))
     setProgressData(enriched)
-  }
+  }, [selectedStudent, selectedClass])
 
-  const currentStudent = students.find(s => s.id === selectedStudent)
+  useEffect(() => { loadClasses() }, [loadClasses])
+  useEffect(() => { loadClassData() }, [loadClassData])
+  useEffect(() => { loadStudentProgress() }, [loadStudentProgress])
+
+  const currentStudent = useMemo(() => students.find(s => s.id === selectedStudent), [students, selectedStudent])
+
+  const handleClassChange = useCallback(e => setSelectedClass(e.target.value), [])
+  const handleStudentChange = useCallback(e => setSelectedStudent(e.target.value), [])
 
   return (
     <Layout>
@@ -145,7 +152,7 @@ export default function Analytics() {
 
         {/* Class Selector */}
         <div className="flex flex-wrap gap-3 mb-6">
-          <Select value={selectedClass} onChange={e => setSelectedClass(e.target.value)} className="max-w-xs">
+          <Select value={selectedClass} onChange={handleClassChange} className="max-w-xs">
             {classes.map(c => <option key={c.id} value={c.id}>{c.className} — {c.section}</option>)}
           </Select>
         </div>
@@ -221,7 +228,7 @@ export default function Analytics() {
                     <h3 className="font-semibold text-surface-900 dark:text-surface-50">Student Progress Over Time</h3>
                     <p className="text-xs text-gray-400">Score trend across exams</p>
                   </div>
-                  <Select value={selectedStudent} onChange={e => setSelectedStudent(e.target.value)} className="sm:ml-auto max-w-[180px] text-xs">
+                  <Select value={selectedStudent} onChange={handleStudentChange} className="sm:ml-auto max-w-[180px] text-xs">
                     {students.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
                   </Select>
                 </div>

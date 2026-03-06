@@ -1,9 +1,9 @@
 // src/utils/cache.js
 // In-memory cache — prevents redundant Firestore reads within a session
-// Data persists for TTL ms (default 60 seconds)
+// Longer TTLs since Firestore persistent cache handles offline/stale data
 
 const store = new Map()
-const DEFAULT_TTL = 60_000 // 60 seconds
+const DEFAULT_TTL = 5 * 60_000 // 5 minutes (was 60s)
 
 export const cache = {
   get(key) {

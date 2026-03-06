@@ -1,5 +1,5 @@
 // src/context/AuthContext.jsx
-import { createContext, useContext, useEffect, useState } from 'react'
+import { createContext, useContext, useEffect, useState, useMemo, useCallback } from 'react'
 import {
   onAuthStateChanged, signInWithEmailAndPassword,
   createUserWithEmailAndPassword, signInWithPopup,
@@ -17,7 +17,7 @@ export const AuthProvider = ({ children }) => {
   const [profile, setProfile] = useState(null)
   const [loading, setLoading] = useState(true)
 
-  const syncProfile = async (firebaseUser) => {
+  const syncProfile = useCallback(async (firebaseUser) => {
     // Check in-memory cache first
     const cached = cache.get(`teacher:${firebaseUser.uid}`)
     if (cached) { setProfile(cached); return }
@@ -41,7 +41,7 @@ export const AuthProvider = ({ children }) => {
       cache.set(`teacher:${firebaseUser.uid}`, { id: firebaseUser.uid, ...newProfile })
       setProfile({ id: firebaseUser.uid, ...newProfile })
     }
-  }
+  }, [])
 
   useEffect(() => {
     const unsub = onAuthStateChanged(auth, async (u) => {
@@ -56,34 +56,42 @@ export const AuthProvider = ({ children }) => {
       }
     })
     return unsub
-  }, [])
+  }, [syncProfile])
 
-  const loginEmail = (email, password) => signInWithEmailAndPassword(auth, email, password)
+  const loginEmail = useCallback((email, password) => signInWithEmailAndPassword(auth, email, password), [])
 
-  const registerEmail = async (email, password, name) => {
+  const registerEmail = useCallback(async (email, password, name) => {
     const cred = await createUserWithEmailAndPassword(auth, email, password)
     await updateProfile(cred.user, { displayName: name })
     await syncProfile({ ...cred.user, displayName: name })
     return cred
-  }
+  }, [syncProfile])
 
-  const loginGoogle = () => signInWithPopup(auth, googleProvider)
+  const loginGoogle = useCallback(() => signInWithPopup(auth, googleProvider), [])
 
-  const logout = () => {
+  const logout = useCallback(() => {
     cache.clear()
     return signOut(auth)
-  }
+  }, [])
 
-  const updateProfileData = async (data) => {
+  const updateProfileData = useCallback(async (data) => {
+    if (!user) return
     const ref = doc(db, 'teachers', user.uid)
     await setDoc(ref, data, { merge: true })
-    const updated = { ...profile, ...data }
-    cache.set(`teacher:${user.uid}`, updated)
-    setProfile(updated)
-  }
+    setProfile(prev => {
+      const updated = { ...prev, ...data }
+      cache.set(`teacher:${user.uid}`, updated)
+      return updated
+    })
+  }, [user])
+
+  // Memoize the context value so consumers don't re-render unless actual values change
+  const value = useMemo(() => ({
+    user, profile, loading, loginEmail, registerEmail, loginGoogle, logout, updateProfileData
+  }), [user, profile, loading, loginEmail, registerEmail, loginGoogle, logout, updateProfileData])
 
   return (
-    <AuthContext.Provider value={{ user, profile, loading, loginEmail, registerEmail, loginGoogle, logout, updateProfileData }}>
+    <AuthContext.Provider value={value}>
       {children}
     </AuthContext.Provider>
   )

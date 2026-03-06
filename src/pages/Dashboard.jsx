@@ -1,9 +1,7 @@
 // src/pages/Dashboard.jsx — Bold & Bright UI
-import { useEffect, useState, useCallback } from 'react'
+import { useEffect, useState, useCallback, useMemo } from 'react'
 import { useAuth } from '../context/AuthContext'
-import { getClasses } from '../firebase/firestore'
-import { getDocs, collection, query, where } from 'firebase/firestore'
-import { db } from '../firebase/firebase'
+import { getClasses, getStudentsByClass, getExamsByClass, getMarksByExam, getAttendanceByClass } from '../firebase/firestore'
 import { Layout, PageHeader } from '../components/layout/Layout'
 import { StatCard, Card, SkeletonStats, Skeleton } from '../components/ui/index'
 import {
@@ -32,40 +30,66 @@ export default function Dashboard() {
   const loadDashboard = useCallback(async () => {
     if (!user) return
     try {
+      // Step 1: Get classes (cached)
       const classes = await getClasses(user.uid)
-      const classIds = classes.map(c => c.id)
-      const [studentSnaps, examSnaps] = await Promise.all([
-        Promise.all(classIds.map(id => getDocs(query(collection(db, 'students'), where('classId', '==', id))))),
-        Promise.all(classIds.map(id => getDocs(query(collection(db, 'exams'), where('classId', '==', id)))))
+      if (classes.length === 0) {
+        setStats({ classes: 0, students: 0, exams: 0, avgScore: 0 })
+        setLoading(false)
+        return
+      }
+
+      // Step 2: Fetch students, exams, attendance ALL in parallel (all cached)
+      const [allStudentArrays, allExamArrays, allAttArrays] = await Promise.all([
+        Promise.all(classes.map(c => getStudentsByClass(c.id))),
+        Promise.all(classes.map(c => getExamsByClass(c.id))),
+        Promise.all(classes.map(c => getAttendanceByClass(c.id)))
       ])
+
       const allStudents = []
-      studentSnaps.forEach((snap, i) => snap.docs.forEach(d => allStudents.push({ id: d.id, className: classes[i].className, ...d.data() })))
+      allStudentArrays.forEach((students, i) =>
+        students.forEach(s => allStudents.push({ ...s, className: classes[i].className }))
+      )
+
       const allExams = []
-      examSnaps.forEach((snap, i) => snap.docs.forEach(d => allExams.push({ id: d.id, className: classes[i].className, classId: classIds[i], ...d.data() })))
-      const markSnaps = await Promise.all(allExams.map(e => getDocs(query(collection(db, 'marks'), where('examId', '==', e.id)))))
+      allExamArrays.forEach((exams, i) =>
+        exams.forEach(e => allExams.push({ ...e, className: classes[i].className }))
+      )
+
+      // Step 3: Fetch all marks in parallel (all cached)
+      const allMarkArrays = await Promise.all(allExams.map(e => getMarksByExam(e.id)))
       const allMarks = []
-      markSnaps.forEach((snap, i) => snap.docs.forEach(d => allMarks.push({ ...d.data(), examName: allExams[i].examName, maxMarks: allExams[i].maxMarks, className: allExams[i].className })))
+      allMarkArrays.forEach((marks, i) =>
+        marks.forEach(m => allMarks.push({
+          ...m, examName: allExams[i].examName,
+          maxMarks: allExams[i].maxMarks, className: allExams[i].className
+        }))
+      )
+
       const scores = allMarks.map(m => (m.marksObtained / m.maxMarks) * 100)
       const avgScore = scores.length ? (scores.reduce((a, b) => a + b, 0) / scores.length).toFixed(1) : 0
+
       const classAvg = classes.map(cls => {
         const cm = allMarks.filter(m => m.className === cls.className)
         const avg = cm.length ? (cm.reduce((a, m) => a + (m.marksObtained / m.maxMarks) * 100, 0) / cm.length).toFixed(1) : 0
         return { name: cls.className, avg: parseFloat(avg) }
       })
-      const attSnaps = await Promise.all(classIds.map(id => getDocs(query(collection(db, 'attendance'), where('classId', '==', id)))))
+
+      // Process attendance data
       let present = 0, absent = 0, late = 0
-      attSnaps.forEach(snap => snap.docs.forEach(d => {
-        Object.values(d.data().records || {}).forEach(s => {
+      allAttArrays.forEach(attArr => attArr.forEach(a => {
+        Object.values(a.records || {}).forEach(s => {
           if (s === 'Present') present++
           else if (s === 'Absent') absent++
           else if (s === 'Late') late++
         })
       }))
+
       const studentScores = allStudents.map(s => {
         const sm = allMarks.filter(m => m.studentId === s.id)
         const avg = sm.length ? sm.reduce((a, m) => a + (m.marksObtained / m.maxMarks) * 100, 0) / sm.length : null
         return { ...s, avg }
       }).filter(s => s.avg !== null).sort((a, b) => b.avg - a.avg)
+
       setStats({ classes: classes.length, students: allStudents.length, exams: allExams.length, avgScore })
       setBarData(classAvg)
       setPieData([
@@ -80,7 +104,7 @@ export default function Dashboard() {
 
   useEffect(() => { loadDashboard() }, [loadDashboard])
 
-  const firstName = profile?.name?.split(' ')[0] || 'Teacher'
+  const firstName = useMemo(() => profile?.name?.split(' ')[0] || 'Teacher', [profile?.name])
 
   return (
     <Layout>

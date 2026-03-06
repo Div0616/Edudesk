@@ -1,5 +1,5 @@
 // src/pages/Timetable.jsx — optimistic updates + Bold & Bright UI
-import { useEffect, useState } from 'react'
+import { useEffect, useState, useCallback, useMemo } from 'react'
 import { useAuth } from '../context/AuthContext'
 import { getClasses, getTimetable, saveTimetableSlot, deleteTimetableSlot, getSubjectsByClass } from '../firebase/firestore'
 import { Layout, PageHeader } from '../components/layout/Layout'
@@ -32,17 +32,16 @@ export default function Timetable() {
   const [slotForm, setSlotForm] = useState({ subject: '', teacher: '', room: '', startTime: '', endTime: '' })
   const [saving, setSaving] = useState(false)
 
-  useEffect(() => { if (user) loadClasses() }, [user])
-  useEffect(() => { if (selectedClass) loadTimetable() }, [selectedClass])
-
-  const loadClasses = async () => {
+  const loadClasses = useCallback(async () => {
+    if (!user) return
     const cls = await getClasses(user.uid)
     setClasses(cls)
     if (cls.length > 0) setSelectedClass(cls[0].id)
     setLoading(false)
-  }
+  }, [user])
 
-  const loadTimetable = async () => {
+  const loadTimetable = useCallback(async () => {
+    if (!selectedClass) return
     setLoading(true)
     const [rawSlots, subs] = await Promise.all([getTimetable(selectedClass), getSubjectsByClass(selectedClass)])
     setSubjects(subs)
@@ -50,16 +49,19 @@ export default function Timetable() {
     rawSlots.forEach(s => { map[`${s.day}_${s.period}`] = { ...s } })
     setSlots(map)
     setLoading(false)
-  }
+  }, [selectedClass])
 
-  const openSlot = (day, period) => {
+  useEffect(() => { loadClasses() }, [loadClasses])
+  useEffect(() => { loadTimetable() }, [loadTimetable])
+
+  const openSlot = useCallback((day, period) => {
     setEditSlot({ day, period })
     const existing = slots[`${day}_${period}`]
     setSlotForm(existing
       ? { subject: existing.subject || '', teacher: existing.teacher || '', room: existing.room || '', startTime: existing.startTime || '', endTime: existing.endTime || '' }
       : { subject: '', teacher: '', room: '', startTime: '', endTime: '' })
     setModal(true)
-  }
+  }, [slots])
 
   const handleSave = async () => {
     if (!slotForm.subject.trim()) { toast.error('Subject is required'); return }
@@ -86,7 +88,7 @@ export default function Timetable() {
     }
   }
 
-  const currentClass = classes.find(c => c.id === selectedClass)
+  const currentClass = useMemo(() => classes.find(c => c.id === selectedClass), [classes, selectedClass])
 
   return (
     <Layout>
@@ -113,7 +115,7 @@ export default function Timetable() {
               <div className="grid gap-1.5 mb-2" style={{ gridTemplateColumns: `120px repeat(${DAYS.length}, 1fr)` }}>
                 <div />
                 {DAYS.map(d => (
-                  <div key={d} className="text-center py-2 text-xs font-bold text-surface-600 dark:text-surface-400 uppercase tracking-wider">{d.slice(0,3)}</div>
+                  <div key={d} className="text-center py-2 text-xs font-bold text-surface-600 dark:text-surface-400 uppercase tracking-wider">{d.slice(0, 3)}</div>
                 ))}
               </div>
               {/* Rows */}
@@ -127,9 +129,8 @@ export default function Timetable() {
                     const slot = slots[key]
                     return (
                       <button key={day} onClick={() => openSlot(day, period)}
-                        className={`min-h-[68px] rounded-xl border text-left p-2.5 transition-all duration-200 hover:shadow-md group ${
-                          slot ? `${SLOT_COLORS[pi]} border` : 'bg-surface-50 dark:bg-surface-800 border-surface-100 dark:border-surface-700 hover:bg-primary-50 dark:hover:bg-primary-950/30 hover:border-primary-200'
-                        }`}>
+                        className={`min-h-[68px] rounded-xl border text-left p-2.5 transition-all duration-200 hover:shadow-md group ${slot ? `${SLOT_COLORS[pi]} border` : 'bg-surface-50 dark:bg-surface-800 border-surface-100 dark:border-surface-700 hover:bg-primary-50 dark:hover:bg-primary-950/30 hover:border-primary-200'
+                          }`}>
                         {slot ? (
                           <div>
                             <p className="text-xs font-bold leading-tight truncate">{slot.subject}</p>

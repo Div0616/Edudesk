@@ -1,16 +1,16 @@
 // src/components/ui/index.jsx — Bold & Bright Design System
-import { useState } from 'react'
+import { memo } from 'react'
 
 /* ── Button ── */
-export const Button = ({ children, variant = 'primary', size = 'md', className = '', loading, ...props }) => {
+export const Button = memo(({ children, variant = 'primary', size = 'md', className = '', loading, ...props }) => {
   const base = 'inline-flex items-center justify-center gap-2 font-semibold rounded-xl transition-all duration-200 active:scale-95 disabled:opacity-60 disabled:cursor-not-allowed select-none'
   const variants = {
-    primary:   'bg-primary-500 hover:bg-primary-600 text-white shadow-sm hover:shadow-glow',
+    primary: 'bg-primary-500 hover:bg-primary-600 text-white shadow-sm hover:shadow-glow',
     secondary: 'bg-white dark:bg-surface-800 hover:bg-surface-50 dark:hover:bg-surface-700 text-surface-700 dark:text-surface-200 border border-surface-200 dark:border-surface-700 shadow-sm',
-    danger:    'bg-red-500 hover:bg-red-600 text-white shadow-sm',
-    ghost:     'text-surface-500 dark:text-surface-400 hover:bg-surface-100 dark:hover:bg-surface-800 hover:text-surface-700 dark:hover:text-surface-200',
-    orange:    'bg-orange-500 hover:bg-orange-600 text-white shadow-sm hover:shadow-glowOrange',
-    success:   'bg-primary-500 hover:bg-primary-600 text-white shadow-sm',
+    danger: 'bg-red-500 hover:bg-red-600 text-white shadow-sm',
+    ghost: 'text-surface-500 dark:text-surface-400 hover:bg-surface-100 dark:hover:bg-surface-800 hover:text-surface-700 dark:hover:text-surface-200',
+    orange: 'bg-orange-500 hover:bg-orange-600 text-white shadow-sm hover:shadow-glowOrange',
+    success: 'bg-primary-500 hover:bg-primary-600 text-white shadow-sm',
   }
   const sizes = {
     xs: 'px-2.5 py-1.5 text-xs',
@@ -24,10 +24,10 @@ export const Button = ({ children, variant = 'primary', size = 'md', className =
       {children}
     </button>
   )
-}
+})
 
 /* ── Input ── */
-export const Input = ({ label, error, className = '', ...props }) => (
+export const Input = memo(({ label, error, className = '', ...props }) => (
   <div className="w-full">
     {label && <label className="block text-xs font-semibold text-surface-600 dark:text-surface-400 uppercase tracking-wide mb-1.5">{label}</label>}
     <input
@@ -36,10 +36,10 @@ export const Input = ({ label, error, className = '', ...props }) => (
     />
     {error && <p className="mt-1 text-xs text-red-500 font-medium">{error}</p>}
   </div>
-)
+))
 
 /* ── Select ── */
-export const Select = ({ label, error, children, className = '', ...props }) => (
+export const Select = memo(({ label, error, children, className = '', ...props }) => (
   <div className="w-full">
     {label && <label className="block text-xs font-semibold text-surface-600 dark:text-surface-400 uppercase tracking-wide mb-1.5">{label}</label>}
     <select
@@ -50,10 +50,10 @@ export const Select = ({ label, error, children, className = '', ...props }) => 
     </select>
     {error && <p className="mt-1 text-xs text-red-500 font-medium">{error}</p>}
   </div>
-)
+))
 
 /* ── Textarea ── */
-export const Textarea = ({ label, error, className = '', ...props }) => (
+export const Textarea = memo(({ label, error, className = '', ...props }) => (
   <div className="w-full">
     {label && <label className="block text-xs font-semibold text-surface-600 dark:text-surface-400 uppercase tracking-wide mb-1.5">{label}</label>}
     <textarea
@@ -62,16 +62,16 @@ export const Textarea = ({ label, error, className = '', ...props }) => (
     />
     {error && <p className="mt-1 text-xs text-red-500 font-medium">{error}</p>}
   </div>
-)
+))
 
 /* ── Badge ── */
-export const Badge = ({ children, color = 'blue', className = '' }) => {
+export const Badge = memo(({ children, color = 'blue', className = '' }) => {
   const colors = {
-    blue:   'bg-blue-100 dark:bg-blue-950/50 text-blue-700 dark:text-blue-300',
-    green:  'bg-primary-100 dark:bg-primary-950/50 text-primary-700 dark:text-primary-300',
+    blue: 'bg-blue-100 dark:bg-blue-950/50 text-blue-700 dark:text-blue-300',
+    green: 'bg-primary-100 dark:bg-primary-950/50 text-primary-700 dark:text-primary-300',
     yellow: 'bg-yellow-100 dark:bg-yellow-950/50 text-yellow-700 dark:text-yellow-300',
-    red:    'bg-red-100 dark:bg-red-950/50 text-red-700 dark:text-red-300',
-    gray:   'bg-surface-100 dark:bg-surface-800 text-surface-600 dark:text-surface-400',
+    red: 'bg-red-100 dark:bg-red-950/50 text-red-700 dark:text-red-300',
+    gray: 'bg-surface-100 dark:bg-surface-800 text-surface-600 dark:text-surface-400',
     orange: 'bg-orange-100 dark:bg-orange-950/50 text-orange-700 dark:text-orange-300',
     purple: 'bg-purple-100 dark:bg-purple-950/50 text-purple-700 dark:text-purple-300',
   }
@@ -80,25 +80,25 @@ export const Badge = ({ children, color = 'blue', className = '' }) => {
       {children}
     </span>
   )
-}
+})
 
 /* ── Card ── */
-export const Card = ({ children, className = '', onClick }) => (
+export const Card = memo(({ children, className = '', onClick }) => (
   <div
     className={`card ${onClick ? 'cursor-pointer hover:shadow-cardHover transition-shadow duration-200' : ''} ${className}`}
     onClick={onClick}
   >
     {children}
   </div>
-)
+))
 
 /* ── Stat Card ── */
-export const StatCard = ({ label, value, icon, color = 'green', sub }) => {
+export const StatCard = memo(({ label, value, icon, color = 'green', sub }) => {
   const colors = {
-    green:  { bg: 'from-primary-500 to-primary-600', light: 'bg-primary-50 dark:bg-primary-950/30', text: 'text-primary-600 dark:text-primary-400' },
-    orange: { bg: 'from-orange-500 to-orange-600',   light: 'bg-orange-50 dark:bg-orange-950/30',   text: 'text-orange-600 dark:text-orange-400' },
-    blue:   { bg: 'from-blue-500 to-blue-600',       light: 'bg-blue-50 dark:bg-blue-950/30',       text: 'text-blue-600 dark:text-blue-400' },
-    purple: { bg: 'from-purple-500 to-purple-600',   light: 'bg-purple-50 dark:bg-purple-950/30',   text: 'text-purple-600 dark:text-purple-400' },
+    green: { bg: 'from-primary-500 to-primary-600', light: 'bg-primary-50 dark:bg-primary-950/30', text: 'text-primary-600 dark:text-primary-400' },
+    orange: { bg: 'from-orange-500 to-orange-600', light: 'bg-orange-50 dark:bg-orange-950/30', text: 'text-orange-600 dark:text-orange-400' },
+    blue: { bg: 'from-blue-500 to-blue-600', light: 'bg-blue-50 dark:bg-blue-950/30', text: 'text-blue-600 dark:text-blue-400' },
+    purple: { bg: 'from-purple-500 to-purple-600', light: 'bg-purple-50 dark:bg-purple-950/30', text: 'text-purple-600 dark:text-purple-400' },
   }
   const c = colors[color] || colors.green
   return (
@@ -113,10 +113,10 @@ export const StatCard = ({ label, value, icon, color = 'green', sub }) => {
       </div>
     </div>
   )
-}
+})
 
 /* ── Modal ── */
-export const Modal = ({ open, onClose, title, children, size = 'md' }) => {
+export const Modal = memo(({ open, onClose, title, children, size = 'md' }) => {
   if (!open) return null
   const sizes = { sm: 'max-w-sm', md: 'max-w-lg', lg: 'max-w-2xl', xl: 'max-w-4xl' }
   return (
@@ -135,10 +135,10 @@ export const Modal = ({ open, onClose, title, children, size = 'md' }) => {
       </div>
     </div>
   )
-}
+})
 
 /* ── Empty State ── */
-export const EmptyState = ({ icon, title, description, action }) => (
+export const EmptyState = memo(({ icon, title, description, action }) => (
   <div className="flex flex-col items-center justify-center py-20 text-center animate-fadeUp">
     <div className="w-20 h-20 bg-gradient-to-br from-primary-100 to-primary-200 dark:from-primary-950/50 dark:to-primary-900/50 rounded-3xl flex items-center justify-center mb-5 shadow-sm">
       <span className="text-4xl">{icon}</span>
@@ -147,23 +147,23 @@ export const EmptyState = ({ icon, title, description, action }) => (
     <p className="text-sm text-surface-400 dark:text-surface-500 max-w-xs mb-6">{description}</p>
     {action}
   </div>
-)
+))
 
 /* ── Spinner ── */
-export const Spinner = ({ size = 'md', className = '' }) => {
+export const Spinner = memo(({ size = 'md', className = '' }) => {
   const sizes = { sm: 'w-4 h-4', md: 'w-8 h-8', lg: 'w-12 h-12' }
   return (
     <div className={`${sizes[size]} border-2 border-surface-200 dark:border-surface-700 border-t-primary-500 rounded-full animate-spin ${className}`} />
   )
-}
+})
 
 /* ── Skeleton ── */
-export const Skeleton = ({ className = '' }) => (
+export const Skeleton = memo(({ className = '' }) => (
   <div className={`skeleton rounded-xl ${className}`} />
-)
+))
 
 /* ── Skeleton Card ── */
-export const SkeletonCard = () => (
+export const SkeletonCard = memo(() => (
   <div className="bg-white dark:bg-surface-900 rounded-2xl border border-surface-100 dark:border-surface-800 p-5 shadow-card space-y-3">
     <div className="flex items-center gap-3">
       <Skeleton className="w-12 h-12 rounded-2xl flex-shrink-0" />
@@ -177,10 +177,10 @@ export const SkeletonCard = () => (
       <Skeleton className="h-3 w-20" />
     </div>
   </div>
-)
+))
 
 /* ── Skeleton Stats ── */
-export const SkeletonStats = () => (
+export const SkeletonStats = memo(() => (
   <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
     {[...Array(4)].map((_, i) => (
       <div key={i} className="bg-white dark:bg-surface-900 rounded-2xl border border-surface-100 dark:border-surface-800 p-5 shadow-card flex items-center gap-4">
@@ -192,10 +192,10 @@ export const SkeletonStats = () => (
       </div>
     ))}
   </div>
-)
+))
 
 /* ── Skeleton Table ── */
-export const SkeletonTable = ({ rows = 5 }) => (
+export const SkeletonTable = memo(({ rows = 5 }) => (
   <div className="bg-white dark:bg-surface-900 rounded-2xl border border-surface-100 dark:border-surface-800 shadow-card overflow-hidden">
     <div className="bg-surface-50 dark:bg-surface-800/50 border-b border-surface-100 dark:border-surface-800 px-4 py-3 flex gap-4">
       {[...Array(4)].map((_, i) => <Skeleton key={i} className="h-3 w-20" />)}
@@ -211,17 +211,17 @@ export const SkeletonTable = ({ rows = 5 }) => (
       ))}
     </div>
   </div>
-)
+))
 
 /* ── Skeleton Cards Grid ── */
-export const SkeletonCards = ({ count = 6 }) => (
+export const SkeletonCards = memo(({ count = 6 }) => (
   <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
     {[...Array(count)].map((_, i) => <SkeletonCard key={i} />)}
   </div>
-)
+))
 
 /* ── Confirm Dialog ── */
-export const ConfirmDialog = ({ open, onClose, onConfirm, title, message, confirmLabel = 'Delete', loading }) => (
+export const ConfirmDialog = memo(({ open, onClose, onConfirm, title, message, confirmLabel = 'Delete', loading }) => (
   <Modal open={open} onClose={onClose} title={title} size="sm">
     <p className="text-sm text-surface-600 dark:text-surface-400 mb-6">{message}</p>
     <div className="flex gap-3 justify-end">
@@ -229,4 +229,4 @@ export const ConfirmDialog = ({ open, onClose, onConfirm, title, message, confir
       <Button variant="danger" onClick={onConfirm} loading={loading}>{confirmLabel}</Button>
     </div>
   </Modal>
-)
+))
